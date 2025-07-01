@@ -1,0 +1,59 @@
+name: Update Data
+on:
+  schedule:
+    # This runs at 6PM UTC
+    # = 11:30 IST
+    - cron: '0 18 * * *'
+  push:
+    branches:
+      - main
+jobs:
+  update:
+    name: Update data
+    runs-on: ubuntu-latest
+    steps:
+    - name: Get current date
+      uses: josStorer/get-current-time@v2
+      id: current-time
+      with:
+        format: "YYYYMMDD"
+        timezone: 'Asia/Kolkata'
+    - uses: actions/checkout@v3
+      name: Checkout (Default Branch)
+      if: ${{ github.event_name == 'push' }}
+      with:
+        fetch-depth: 1
+    - uses: actions/checkout@v3
+      name: Checkout Main
+      if: ${{ github.event_name == 'schedule' }}
+      with:
+        fetch-depth: 1
+        ref: 'main'
+    - name: Update data
+      run: ./fetch.sh
+    - uses: stefanzweifel/git-auto-commit-action@v4
+      id: commit
+      with:
+        commit_message: Update Historical Data
+        commit_author: 'github-actions[bot] <github-actions[bot]@users.noreply.github.com>'
+    - uses: actions/setup-python@v4 
+      with:
+        python-version: 'pypy3.9'
+    - name: Create Dataset
+      run: |
+        pypy3 generate.py
+        zstd -5 -T0 funds.db
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git config user.name "github-actions[bot]"
+    - name: Publish Stable Release (Schedule)
+      run: |
+        gh release create "v0.0.${{ steps.current-time.outputs.formattedTime }}" --notes "Historical Mutual Fund Data as per ${{ steps.current-time.outputs.formattedTime }}. Please see README for index creation, usage, and schema." *.zst
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      if: ${{ github.event_name == 'schedule' }}
+    - name: Publish Pre Release
+      run: |
+        gh release create "v0.0.${{ steps.current-time.outputs.formattedTime }}-pre+${{github.sha}}" --notes "Historical Mutual Fund Data as per ${{ steps.current-time.outputs.formattedTime }}. Please see README for index creation, usage, and schema. This is a pre-release, and not considered stable." *.zst
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      if: ${{ github.event_name == 'push' }}

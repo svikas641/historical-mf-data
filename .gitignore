@@ -1,0 +1,4 @@
+*.prof
+*.db
+*.zst
+*.db-journal
